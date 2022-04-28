@@ -1,0 +1,4 @@
+just to ccheck if it works
+from command line
+
+MM
