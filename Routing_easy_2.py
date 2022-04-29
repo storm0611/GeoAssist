@@ -9,14 +9,15 @@ Created on Sun Mar 27 15:00:00 2022
 @author: Michele Martignago - martignagomichele@gmail.com
 
 """
+from sys import excepthook
 from turtle import up
 import openrouteservice
 from openrouteservice import convert
 import folium
-#import json
+# import json
 import pandas as pd
 import numpy as np
-#import datetime
+# import datetime
 from datetime import date
 import xlrd
 import threading
@@ -62,14 +63,16 @@ def construct_db():
         ) as connection:
             print(connection)
 
+            global excel_data, table_name
+
             # # Create table named 'dati1_table'
             # create_table_query = """
-            #     CREATE TABLE dati1_table  (
+            #     CREATE TABLE """ + table_name + """  (
             #         numeroRiga INT(255) NOT NULL,
             #         numeroGE INT(255) NOT NULL,
-            #         ultimaVisita DATE NOT NULL,
+            #         ultimaVisita DATETIME NOT NULL,
             #         deltaTmax INT(255) NOT NULL,
-            #         nextDeadline DATE NOT NULL,
+            #         nextDeadline DATETIME NOT NULL,
             #         nextDeadlineN INT(255) NOT NULL,
             #         loc VARCHAR(255) NOT NULL,
             #         cap INT(255) NULL DEFAULT NULL,
@@ -85,10 +88,9 @@ def construct_db():
             #     connection.commit()
 
             # Insert data from excel to database table
-            global excel_data
             excel_data = pd.read_excel(r'dati1.xlsx', sheet_name='Rubr')
             for i in range(len(excel_data)):
-                insert_query = "INSERT INTO dati1_table VALUES("
+                insert_query = "INSERT INTO " + table_name + " VALUES("
                 insert_query += str(excel_data.iloc[i]['NumeroRiga']) + ", "
                 insert_query += str(excel_data.iloc[i]['NumeroGE']) + ", "
                 insert_query += "'" + \
@@ -123,17 +125,17 @@ def construct_db():
 def delete_table_data():
     # Delete old table
 
-    delete_query = "DELETE FROM dati1_table"
-    with connection.cursor() as cursor:
-        cursor.execute(delete_query)
-        connection.commit()
+    delete_query = "DELETE FROM " + table_name
+    cursor = connection.cursor()
+    cursor.execute(delete_query)
+    connection.commit()
 
 
 def insert_excel2db(excel_data):
     # Insert data from excel to database table
 
     for i in range(len(excel_data)):
-        insert_query = "INSERT INTO dati1_table VALUES("
+        insert_query = "INSERT INTO " + table_name + " VALUES("
         insert_query += str(excel_data.iloc[i]['NumeroRiga']) + ", "
         insert_query += str(excel_data.iloc[i]['NumeroGE']) + ", "
         insert_query += "'" + \
@@ -154,11 +156,29 @@ def insert_excel2db(excel_data):
         insert_query += str(excel_data.iloc[i]['long'])
         insert_query += ")"
         print(insert_query)
-        with connection.cursor() as cursor:
-            cursor.execute(insert_query)
-            connection.commit()
-            global updatedFlag
-            updatedFlag = 1
+
+        cursor.execute(insert_query)
+        connection.commit()
+        global updatedFlag
+        updatedFlag = 1
+
+
+def select_frome_db():
+    # Select specific column values from db
+    lat = []
+    long_ = []
+    next_deadline = []
+
+    select_query = "SELECT * FROM " + table_name
+    print(select_query)
+    cursor = connection.cursor()
+    cursor.execute(select_query)
+    result = cursor.fetchall()
+    for row in result:
+        next_deadline.append(row[4])
+        lat.append(row[10])
+        long_.append(row[11])
+    return {'next_deadline': next_deadline, 'lat': lat, 'long': long_}
 
 
 class myThread (threading.Thread):
@@ -170,30 +190,33 @@ class myThread (threading.Thread):
 
     def run(self):
         print("Starting " + self.name)
+        try:
+            data = pd.read_excel(r'dati1.xlsx', sheet_name='Rubr')
 
-        data = pd.read_excel('dati1.xlsx', sheet_name='Rubr')
+            while not exitFlag:
+                # Check file is modified
+                data_new = pd.read_excel('dati1.xlsx', sheet_name='Rubr')
+                if not data_new.equals(data):
+                    # Delete all data from table
+                    delete_table_data()
+                    data = data_new
+                    # Insert new data to table
+                    insert_excel2db(data)
+                time.sleep(self.delayTime)
+                print(self.name, time.ctime(time.time()))
 
-        while not exitFlag:
-            # Check file is modified
-            data_new = pd.read_excel('dati1.xlsx', sheet_name='Rubr')
-            if not data_new.equals(data):
-                # Delete all data from table
-                delete_table_data()
-                data = data_new
-                # Insert new data to table
-                insert_excel2db(data)
-            time.sleep(self.delayTime)
-            print(self.name, time.ctime(time.time()))
+            print("Exiting " + self.name)
 
-        print("Exiting " + self.name)
+        except Error as e:
+            print(e)
 
 
 def calculate(data):
     # data = pd.read_excel(r'dati1.xlsx', sheet_name='Rubr', nrows=n_next+1)
-    #address_via = pd.DataFrame(data, columns= ['Via'])
-    #address_city = pd.DataFrame(data, columns= ['Loc'])
+    # address_via = pd.DataFrame(data, columns= ['Via'])
+    # address_city = pd.DataFrame(data, columns= ['Loc'])
 
-    #coords = data['coord'].tolist()
+    # coords = data['coord'].tolist()
 
     lat = data['lat']
     long = data['long']
@@ -201,21 +224,21 @@ def calculate(data):
 
     lat = list(np.float_(lat))
     long = list(np.float_(long))
-    #next_deadline = list(np.float_(next_deadline))
+    # next_deadline = list(np.float_(next_deadline))
 
-    #coords = [(long_, lat_) for lat_ in lat for long_ in long]
+    # coords = [(long_, lat_) for lat_ in lat for long_ in long]
     lat = lat[0:n_next]
     long = long[0:n_next]
     next_deadline = next_deadline[0:n_next]
-    #coords = coord[0:25]
+    # coords = coord[0:25]
     # print(coords)
 
     # initialize new variable that will have date in DD/MM/YYYY
     next_deadline_DD = next_deadline
 
     for i in range(n_next):
-        xl_date = next_deadline[i]
-        datetime_date = xlrd.xldate_as_datetime(xl_date, 0)
+        print(type(next_deadline[i]))
+        datetime_date = next_deadline[i]
         date_object = datetime_date.date()
         string_date = date_object.isoformat()
         next_deadline_DD[i] = date_object
@@ -224,9 +247,9 @@ def calculate(data):
               for idx2, p2 in enumerate(lat) if idx1 == idx2]
     # set location coordinates in longitude,latitude order
     # be aware that google maps usually gives you lat, long, so we enter like that and then swap x y
-    #coords = ((45.73600000000000,12.43487500000000),(45.87493900000000,11.94283900000000),(45.8582068,11.8771237))
-    #coords = ((coords_1[2]), (coords[1]))
-    #coords = [(y, x) for x, y in coords]
+    # coords = ((45.73600000000000,12.43487500000000),(45.87493900000000,11.94283900000000),(45.8582068,11.8771237))
+    # coords = ((coords_1[2]), (coords[1]))
+    # coords = [(y, x) for x, y in coords]
 
     print(coords)
 
@@ -235,10 +258,10 @@ def calculate(data):
     print(oggi)
     for i in range(len(next_deadline_DD)):
         urgency[i] = next_deadline_DD[i] - oggi  # (hours=-8)
-        #urgency[i] = urgency[i].isoformat()
+        # urgency[i] = urgency[i].isoformat()
         print(urgency[i].days)
 
-    #coords = ((80.21787585263182,6.025423265401452),(80.23990263756545,6.018498276842677))
+    # coords = ((80.21787585263182,6.025423265401452),(80.23990263756545,6.018498276842677))
 
     ######################
     # Risolve problema di Routing
@@ -263,9 +286,10 @@ def calculate(data):
         distance_txt+duration_txt, max_width=400)).add_to(m2)
     '''
 
-    ##### Plot senza risoluzione
-    m2 = folium.Map(location=[45.736000000000,12.434875000000],zoom_start=9, control_scale=True,tiles="cartodbpositron")
-    #folium.GeoJson(decoded).add_child(folium.Popup(distance_txt+duration_txt,max_width=300)).add_to(m2)
+    # Plot senza risoluzione
+    m2 = folium.Map(location=[45.736000000000,12.434875000000],
+                    zoom_start=9, control_scale=True,tiles="cartodbpositron")
+    # folium.GeoJson(decoded).add_child(folium.Popup(distance_txt+duration_txt,max_width=300)).add_to(m2)
 
 
     '''
@@ -298,11 +322,11 @@ def calculate(data):
     ####################
     '''
     for i in range(len(coords)):
-        
+
         folium.Marker(
-            #text = f"Num_GE \n Cliente_ \n Entro {urgency[i].days} gg i.e.: {next_deadline[i]} \n via indirizzo numero Paese PROV \n  337 52xx529 \n  {coords[i][::-1]} ok",
+            # text = f"Num_GE \n Cliente_ \n Entro {urgency[i].days} gg i.e.: {next_deadline[i]} \n via indirizzo numero Paese PROV \n  337 52xx529 \n  {coords[i][::-1]} ok",
             location=list(coords[i][::-1]),
-            #iframe = folium.IFrame(text),
+            # iframe = folium.IFrame(text),
             popup = folium.Popup(min_width=500, max_width=800),
             icon=folium.Icon(color="purple"),
             ).add_to(m2)
@@ -314,7 +338,8 @@ def calculate(data):
 
 
     for lt, ln, name in zip(lat, long, text):
-        m2.add_child(folium.Marker(location=[lt, ln], popup=str(name), icon=folium.Icon(color='green', max_width=100, min_width=100)))
+        m2.add_child(folium.Marker(location=[lt, ln], popup=str(
+            name), icon=folium.Icon(color='green', max_width=100, min_width=100)))
     """
 
     marker_colors = [None]*len(urgency)
@@ -333,7 +358,7 @@ def calculate(data):
         iframe = folium.IFrame('GE numero:' + '<br>' + 'Cliente:  ' + '<br>' + 'Entro:  ' + str(urgency[i].days) + ' gg' + '<br>' + 'Entro:  ' + str(
             next_deadline_DD[i]) + '<br>' + 'Lat:  ' + str(lat[i]) + '<br>' + 'Lon:  ' + str(long[i]) + '<br>' + 'Telefono:')
         popup = folium.Popup(iframe, min_width=300, max_width=300)
-        #folium.Marker(location=[lat[i], long[i]], icon=folium.Icon(color='blue', icon='map-marker', prefix='fa'), popup=popup).add_to(m2)
+        # folium.Marker(location=[lat[i], long[i]], icon=folium.Icon(color='blue', icon='map-marker', prefix='fa'), popup=popup).add_to(m2)
         folium.Marker(location=[lat[i], long[i]], icon=folium.Icon(
             color=marker_colors[i], icon='map-marker', prefix='fa'), popup=popup).add_to(m2)
 
@@ -347,34 +372,38 @@ def main():
     try:
         # Connect table in db
 
-        global connection
+        global connection, cursor
 
-        with connect(
+        connection = connect(
             host="localhost",
             user=input("Enter username: "),
             password=getpass("Enter password: "),
             database='mysql_db'
-        ) as connection:
-            print(connection)
+        )
+        print(connection)
 
-            # Create new threads
-            check_file_thread = myThread(0, "Thread-1", 0.5)
+        global table_name
+        table_name = 'dati1_table'
+        cursor = connection.cursor()
+        calculate(select_frome_db())
 
-            # Start new Threads
-            check_file_thread.start()
+        # Create new threads
+        check_file_thread = myThread(0, "Thread-1", 0.5)
 
-            while check_file_thread.is_alive():
-                if keyboard.is_pressed("esc"):
-                    global exitFlag
-                    exitFlag = 1
+        # Start new Threads
+        check_file_thread.start()
+
+        while check_file_thread.is_alive():
+            if keyboard.is_pressed("esc"):
+                global exitFlag
+                exitFlag = 1
 
                 global updatedFlag
                 if updatedFlag:
-
+                    calculate(select_frome_db())
                     updatedFlag = 0
-                #     calculate()
 
-            print("Exiting Main Thread")
+        print("Exiting Thread")
 
     except Error as e:
         print(e)
