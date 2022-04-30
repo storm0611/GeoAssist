@@ -237,7 +237,6 @@ def calculate(data):
     next_deadline_DD = next_deadline
 
     for i in range(n_next):
-        print(type(next_deadline[i]))
         datetime_date = next_deadline[i]
         date_object = datetime_date.date()
         string_date = date_object.isoformat()
