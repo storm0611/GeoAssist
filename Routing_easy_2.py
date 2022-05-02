@@ -9,17 +9,12 @@ Created on Sun Mar 27 15:00:00 2022
 @author: Michele Martignago - martignagomichele@gmail.com
 
 """
-from sys import excepthook
-from turtle import up
 import openrouteservice
 from openrouteservice import convert
 import folium
-# import json
 import pandas as pd
 import numpy as np
-# import datetime
 from datetime import date
-import xlrd
 import threading
 import time
 import keyboard
